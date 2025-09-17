@@ -1,0 +1,19 @@
+SELECT
+cst_id,
+cst_Key,
+TRIM (cst_firstname) As cst_firstname,
+TRIM (cst_lastname) As cst_lastname,
+	CASE
+	    When Upper(TRIM(cst_marital_status)) = 'S' Then 'Single' 
+		When Upper(TRIM(cst_marital_status)) = 'M' Then 'Married'
+		else 'N/A' END cst_marital_status,
+	CASE 
+		When Upper(TRIM(cst_gender)) = 'F' Then 'Female' 
+		When Upper(TRIM(cst_gender)) = 'M' Then 'Male'
+		else 'N/A' END cst_gender,
+cst_create_date
+From 
+(Select *,
+Row_number () Over (partition by cst_id Order by cst_create_date DESC) as flag_last
+from Bronze.crm_cust_info)t
+Where flag_last = 1
