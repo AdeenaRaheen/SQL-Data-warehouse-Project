@@ -1,0 +1,77 @@
+IF OBJECT_ID('Gold.report_products', 'V') IS NOT NULL
+    DROP VIEW Gold.report_products;
+GO
+
+CREATE VIEW Gold.report_products AS
+WITH Base_Query As (SELECT 
+f.order_number,
+        f.order_date,
+		f.customerkey,
+        f.sales_amount,
+        f.quantity,
+        p.product_key,
+        p.product_name,
+        p.category,
+        p.sub_category,
+        p.cost
+FROM Gold.fact_sales f
+LEFT JOIN Gold.dim_products p
+On 
+p.product_key = f.product_key
+WHERE order_date IS NOT NULL),
+/*---------------------------------------------------------------------------
+2) Product Aggregations: Summarizes key metrics at the product level
+---------------------------------------------------------------------------*/
+Product_Aggregation As (SELECT
+    product_key,
+    product_name,
+    category,
+    sub_category,
+    cost,
+    DATEDIFF(MONTH, MIN(order_date), MAX(order_date)) AS lifespan,
+    MAX(order_date) AS last_sale_date,
+    COUNT(DISTINCT order_number) AS total_orders,
+	COUNT(DISTINCT customerkey) AS total_customers,
+    SUM(sales_amount) AS total_sales,
+    SUM(quantity) AS total_quantity,
+	ROUND(AVG(CAST(sales_amount AS FLOAT) / NULLIF(quantity, 0)),1) AS avg_selling_price
+FROM Base_Query
+GROUP BY
+    product_key,
+    product_name,
+    category,
+    sub_category,
+    cost)
+
+SELECT 
+	product_key,
+	product_name,
+	category,
+	sub_category,
+	cost,
+	last_sale_date,
+	DATEDIFF(MONTH, last_sale_date, GETDATE()) AS recency_in_months,
+	CASE
+		WHEN total_sales > 50000 THEN 'High-Performer'
+		WHEN total_sales >= 10000 THEN 'Mid-Range'
+		ELSE 'Low-Performer'
+	END AS product_segment,
+	lifespan,
+	total_orders,
+	total_sales,
+	total_quantity,
+	total_customers,
+	avg_selling_price,
+	-- Average Order Revenue (AOR)
+	CASE 
+		WHEN total_orders = 0 THEN 0
+		ELSE total_sales / total_orders
+	END AS avg_order_revenue,
+
+	-- Average Monthly Revenue
+	CASE
+		WHEN lifespan = 0 THEN total_sales
+		ELSE total_sales / lifespan
+	END AS avg_monthly_revenue
+
+FROM Product_Aggregation
