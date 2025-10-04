@@ -1,0 +1,67 @@
+IF OBJECT_ID('Gold.report_customers', 'V') IS NOT NULL
+    DROP VIEW Gold.report_customers;
+GO
+CREATE VIEW Gold.report_customers As
+With Base_query As (SELECT 
+f.order_number,
+f.product_key,
+f.order_date,
+f.sales_amount,
+f.quantity,
+c.customerkey,
+c.customer_number,
+CONCAT (first_name, ' ', last_name) customer_name,
+DATEDIFF (year, c.birthdate , getdate()) age
+From Gold.fact_sales f
+LEFT JOIN Gold.dim_customers c
+on c.customerkey = f.customerkey
+Where order_date IS NOT NULL
+),
+Customers_Aggregration AS (
+SELECT 
+customerkey,
+customer_number,
+customer_name,
+age,
+count (DISTINCT order_number) AS total_orders,
+sum (sales_amount) As total_sales,
+sum (quantity) As total_quantity,
+Count (DISTINCT product_key) As total_products,
+Max (order_date) As last_order_date,
+DATEDIFF (month, Min (order_date), Max (order_date)) lifespan
+From Base_query
+GROUP BY
+	customerkey,
+	customer_number,
+	customer_name,
+	age
+)
+SELECT
+customerkey,
+customer_number,
+customer_name,
+age,
+CASE
+	WHEN age < 20 then 'Under 20'
+	WHEN age Between 20 AND 29 Then '20-29'
+	WHEN age Between 30 AND 39 Then '30-39'
+	WHEN age Between 40 AND 49 Then '40-49'
+	Else '50 And Above'
+END As age_group,
+CASE 
+When lifespan >= 12 AND total_sales > 5000 Then 'VIP'
+When lifespan >= 12 And total_sales <= 5000 then 'REGULAR'
+ELSE 'NEW'
+END As customer_segment,
+last_order_date,
+DATEDIFF(month, last_order_date, getdate ()) As recency,
+total_orders,
+total_sales,
+total_quantity,
+total_products,
+lifespan,
+CASE WHEN total_sales = 0 then '0'
+Else total_sales/total_orders END As avg_order_value,
+CASE WHEN lifespan =0 then total_sales
+Else total_sales/lifespan End As avg_monthly_spend
+From Customers_Aggregration
